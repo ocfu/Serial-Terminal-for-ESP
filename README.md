@@ -1,16 +1,20 @@
 # Serial Terminal for ESP
 
-**Serial-Terminal-for-ESP** is a command-line utility written in C++ for macOS and Linux. It facilitates serial communication by reading data from a specified serial port and writing data to it. The program can also log specific patterns of received data to a file and handle user-defined baud rates.
+**Serial-Terminal-for-ESP** is a command-line utility written in C++ for macOS and Linux. It facilitates serial communication with an ESP by reading data from a specified serial port and writing data to it. The program can also log specific patterns of received data to a file and handle user-defined baud rates.
 
 ## Features
-- Opens a serial port for communication.
+- Opens a serial port for a terminal communication with an ESP.
 - Reads and writes data via the serial port.
 - Logs specific data patterns to a file.
 - Supports customizable baud rates via command-line arguments.
 - Redirects `stdin` to the serial port for sending data.
 - Maintains build and runtime cleanliness with organized directories.
+  
+## It does not
+- Upload or download sketches, filesystems or files over the serial port.
 
 ## Prerequisites
+- **ESP8266** (ESP32 to come)
 - **macOS** or **Linux**
 - **Xcode Command Line Tools** (macOS) or **gcc/g++** (Linux)
 - **C++17** or later support
