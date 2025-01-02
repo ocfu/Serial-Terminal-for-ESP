@@ -1,12 +1,9 @@
 //
-//  serial.cpp
+//  serial_esp.cpp
 //  xESP Tool serial
 //
 //  Created by ocfu on 01.10.24.
 //  Copyright © 2024 ocfu. All rights reserved.
-//
-
-// CLI analyse: https://github.com/me21/EspArduinoExceptionDecoder
 //
 
 #include <stdio.h>
@@ -17,19 +14,19 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
-#include <ctype.h> // Für isprint()
-#include <sys/stat.h> // Für Dateiüberprüfung
-#include <getopt.h>   // Für die Analyse von Optionen
-#include <pthread.h> // Für Threads
+#include <ctype.h> 
+#include <sys/stat.h> 
+#include <getopt.h>   
+#include <pthread.h> 
 
 
 #define PATTERN "--------------- CUT HERE FOR EXCEPTION DECODER ---------------"
-#define PATTERN_LENGTH (sizeof(PATTERN) - 1)  // Länge des Musters ohne Nullterminierung
+#define PATTERN_LENGTH (sizeof(PATTERN) - 1)  // pattern length without '\0' termination
 
 volatile int keepRunning = 1;
-int logging = 0; // Indikator für Loggen der Daten
+int logging = 0; // indicates logging to files
 FILE *log_file = NULL;
-int enable_dump_logging = 0; // Ob die Dateiausgabe aktiviert ist
+int enable_dump_logging = 0; // indicates dump to files
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -40,7 +37,7 @@ void intHandler(int dummy) {
 
 #pragma GCC diagnostic pop
 
-// Funktion zum Umwandeln von Baudrate in den entsprechenden Konstantenwert
+// convert baudrate parameter to a constant
 speed_t getBaudrate(int baudrate) {
    switch(baudrate) {
       case 1200: return B1200;
@@ -61,18 +58,18 @@ speed_t getBaudrate(int baudrate) {
 void enable_raw_mode() {
    struct termios tty;
    
-   // Aktuelle Terminal-Einstellungen holen
+   // get current terminal settings for later restore
    if (tcgetattr(STDIN_FILENO, &tty) == -1) {
       perror("tcgetattr");
       exit(EXIT_FAILURE);
    }
    
-   // Terminal auf nicht-kanonischen Modus setzen
-   tty.c_lflag &= ~(ICANON | ECHO); // Kanonisch und Echo deaktivieren
-   tty.c_cc[VMIN] = 1;             // Mindestens 1 Zeichen pro Lesevorgang
-   tty.c_cc[VTIME] = 0;            // Kein Timeout
+   // switch the terminal to non-canon mode without echo
+   tty.c_lflag &= ~(ICANON | ECHO); 
+   tty.c_cc[VMIN] = 1;             // min. 1 char per read
+   tty.c_cc[VTIME] = 0;            // no timeout
    
-   // Neue Einstellungen anwenden
+   // apply new terminal settings
    if (tcsetattr(STDIN_FILENO, TCSANOW, &tty) == -1) {
       perror("tcsetattr");
       exit(EXIT_FAILURE);
@@ -82,13 +79,13 @@ void enable_raw_mode() {
 void disable_raw_mode() {
    struct termios tty;
    
-   // Terminal-Einstellungen zurücksetzen
+   // restor terminal settings
    if (tcgetattr(STDIN_FILENO, &tty) == -1) {
       perror("tcgetattr");
       exit(EXIT_FAILURE);
    }
    
-   tty.c_lflag |= (ICANON | ECHO); // Kanonisch und Echo wieder aktivieren
+   tty.c_lflag |= (ICANON | ECHO); 
    
    if (tcsetattr(STDIN_FILENO, TCSANOW, &tty) == -1) {
       perror("tcsetattr");
@@ -96,7 +93,7 @@ void disable_raw_mode() {
    }
 }
 
-// Funktion, um Daten aus stdin an die serielle Schnittstelle zu senden
+// function to get data from stdin and send to the serial port
 void *write_to_serial(void *arg) {
    int serial_port = *(int *)arg;
    char input_buf[256];
@@ -118,7 +115,7 @@ void *write_to_serial(void *arg) {
    return NULL;
 }
 
-// Funktion, um nach dem Muster in den empfangenen Daten zu suchen
+// function to capture the ESP exception pattern in received data from the serial port
 int match_pattern(const char *buf, int buf_len, int *match_len) {
    static int pattern_pos = 0;
    
@@ -126,9 +123,9 @@ int match_pattern(const char *buf, int buf_len, int *match_len) {
       if (buf[i] == PATTERN[pattern_pos]) {
          pattern_pos++;
          if (pattern_pos == PATTERN_LENGTH) {
-            *match_len = i + 1; // Länge bis zum Ende des Musters
+            *match_len = i + 1; 
             pattern_pos = 0;
-            return 1;  // Muster gefunden
+            return 1;  // pattern found
          }
       } else {
          pattern_pos = 0;
@@ -138,25 +135,23 @@ int match_pattern(const char *buf, int buf_len, int *match_len) {
    return 0;
 }
 
-// Funktion, um zu prüfen, ob eine Datei existiert
 int file_exists(const char *filename) {
    struct stat buffer;
    return (stat(filename, &buffer) == 0);
 }
 
-// Funktion zum Erstellen eines eindeutigen Dateinamens und zum Kopieren der existierenden `dump.log` falls vorhanden
+// function to create an index file name and copy existiong `dump.log`
 void handle_existing_logfile(const char* filename) {
    char new_filename[64];
    int index = 1;
    
-   // Prüfe, ob file existiert
    if (file_exists(filename)) {
-      // Finde einen eindeutigen neuen Dateinamen mit Index
+      // find the next index file name
       do {
          snprintf(new_filename, sizeof(new_filename), "%s.%d", filename, index++);
       } while (file_exists(new_filename));
       
-      // Kopiere den Inhalt von `dump.log` in die neue Datei
+      // copy the `dump.log` content
       FILE *src = fopen(filename, "r");
       FILE *dest = fopen(new_filename, "w");
       if (src && dest) {
@@ -174,19 +169,6 @@ void handle_existing_logfile(const char* filename) {
          perror("Error copying log file");
          exit(EXIT_FAILURE);
       }
-   }
-}
-
-
-// Funktion zum Erstellen eines eindeutigen Dateinamens
-void create_unique_filename(char *filename, size_t size) {
-   int index = 0;
-   snprintf(filename, size, "dump.log");
-   
-   // Prüfe, ob die Datei existiert, und erhöhe den Index, falls ja
-   while (file_exists(filename)) {
-      index++;
-      snprintf(filename, size, "dump_%d.log", index);
    }
 }
 
@@ -209,7 +191,7 @@ int main(int argc, char *argv[]) {
             enable_dump_logging = 1;
             break;
          case 'b':
-            baudrate = atoi(optarg); // Baudrate setzen
+            baudrate = atoi(optarg); 
             break;
          default:
             usage_exit(argv[0], EXIT_FAILURE);
@@ -266,11 +248,11 @@ int main(int argc, char *argv[]) {
    
    //signal(SIGINT, intHandler);
 
-   // Setze stdin in den nicht-kanonischen Modus
+   // set stdin to non-canon mode
    enable_raw_mode();
 
    
-   // Erstelle einen Thread für das Schreiben von stdin an die serielle Schnittstelle
+   // create the write thread from stdin to the serial port
    pthread_t writer_thread;
    if (pthread_create(&writer_thread, NULL, write_to_serial, &serial_port) != 0) {
       perror("Error creating thread");
@@ -292,18 +274,16 @@ int main(int argc, char *argv[]) {
       }
       
       int match_len = 0;
-      // Prüfen, ob das Muster empfangen wurde
+      // verify dump pattern match, if dump loggin is enabled
       if (enable_dump_logging && match_pattern(read_buf, num_bytes, &match_len)) {
          if (logging == 0) {
-            // Erstes Auftreten des Musters -> Starte Loggen
+            // pattern matches, start logging the dump
             printf("Pattern detected. Starting to log...\n");
             
             char filename[64];
             snprintf(filename, sizeof(filename), "dump.log");
             
-            // Dateiprüfung und Kopie, falls vorhanden
             handle_existing_logfile(filename);
-            
 
             log_file = fopen(filename, "w");
             if (log_file == NULL) {
@@ -313,7 +293,7 @@ int main(int argc, char *argv[]) {
             printf("Logging to file: %s\n", filename);
             logging = 1;
          } else {
-            // Zweites Auftreten des Musters -> Stoppe Loggen
+            // pattern machtes (again), stop logging
             printf("Pattern detected again. Stopping log.\n");
             if (log_file != NULL) {
                fclose(log_file);
@@ -322,7 +302,7 @@ int main(int argc, char *argv[]) {
             logging = 0;
          }
          
-         // Weiterverarbeite die verbleibenden Zeichen nach dem Muster
+         // handle remaining data received
          if (match_len < num_bytes) {
             int remaining_bytes = num_bytes - match_len;
             if (logging && log_file != NULL) {
@@ -333,7 +313,7 @@ int main(int argc, char *argv[]) {
                if (isprint(read_buf[i]) || read_buf[i] == 0x0d || read_buf[i] == 0x0a) {
                   printf("%c", read_buf[i]);
                } else {
-                  printf("[%02X]", (unsigned char)read_buf[i]);  // Nicht druckbare Zeichen als Hexadezimal ausgeben
+                  printf("[%02X]", (unsigned char)read_buf[i]);  // print non-printable characters as hex value
                }
             }
             fflush(stdout);
@@ -341,19 +321,15 @@ int main(int argc, char *argv[]) {
          continue;
       }
       
-      // Falls wir loggen, die Daten in die Datei schreiben
+      // log data, if enabled
       if (logging && log_file != NULL) {
          fwrite(read_buf, sizeof(char), num_bytes, log_file);
-         fflush(log_file);  // Stellt sicher, dass die Daten sofort geschrieben werden
+         fflush(log_file);
       }
       
-      // Output each character, either as is (if printable) or as a hex value
+      // Output each character on stdout
       for (int i = 0; i < num_bytes; i++) {
-         //if (isprint(read_buf[i]) || read_buf[i] == 0x0d || read_buf[i] == 0x0a || read_buf[i] == 0x1b ) {
-            printf("%c", read_buf[i]);  // Druckbare Zeichen normal ausgeben
-//         } else {
-  //          printf("[%02X]", (unsigned char)read_buf[i]);  // Nicht druckbare Zeichen als Hexadezimal ausgeben
-    //     }
+            printf("%c", read_buf[i]); 
       }
       fflush(stdout);
    }
