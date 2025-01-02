@@ -1,13 +1,17 @@
-# Compiler
-CXX = clang++
-
-# Compiler Flags
-CXXFLAGS = -Wall -Wextra -O2 -std=c++17 -pthread
+# Compiler and Flags
+OS := $(shell uname -s)
+ifeq ($(OS), Darwin)
+    CXX = clang++
+    CXXFLAGS = -Wall -Wextra -O2 -std=c++17 -pthread
+else ifeq ($(OS), Linux)
+    CXX = g++
+    CXXFLAGS = -Wall -Wextra -O2 -std=c++17 -pthread
+endif
 
 # Target (program name)
 TARGET = serial_esp
 
-# Source and Build Directories
+# Directories
 SRC_DIR = src
 BUILD_DIR = .build
 
@@ -38,9 +42,8 @@ clean:
 
 # Install rule (optional)
 install: $(BUILD_DIR)/$(TARGET)
-	cp $(BUILD_DIR)/$(TARGET) /usr/local/bin/
+	cp $(BUILD_DIR)/$(TARGET) ~/bin/
 
 # Uninstall rule (optional)
 uninstall:
-	rm -f /usr/local/bin/$(TARGET)
-
+	rm -f ~/bin/$(TARGET)
