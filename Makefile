@@ -5,7 +5,7 @@ CXX = clang++
 CXXFLAGS = -Wall -Wextra -O2 -std=c++17 -pthread
 
 # Target (program name)
-TARGET = serial_logger
+TARGET = serial_esp
 
 # Source and Build Directories
 SRC_DIR = src
